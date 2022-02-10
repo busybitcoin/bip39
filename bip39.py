@@ -1,5 +1,18 @@
 import hashlib
+import hmac
 import secrets
+
+
+def base58(hx):
+    chars = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+
+    i = int(hx, 16)
+    output = str()
+    while i > 0:
+        rem = i % 58
+        i = i // 58
+        output = chars[rem] + output
+    return output
 
 
 def calulate_checksum(bits):
@@ -64,6 +77,26 @@ def get_wordlist():
     return [wr.strip() for wr in words]
 
 
+def get_xprv(seed):
+    # extended priv key is just hmac-sha512 of binary seed and 'Bitcoin seed'
+    hsh = hmac.digest('Bitcoin seed'.encode(), bytes.fromhex(seed), 'sha512')
+    keydata = b'\x00' + hsh[:32]
+    chaincode = hsh[32:]
+
+    # serialize the extended priv key
+    version = b'\x04\x88\xAD\xE4'
+    depth = b'\x00'
+    parent = b'\x00\x00\x00\x00'
+    child = b'\x00\x00\x00\x00'
+    xprv = version + depth + parent + child + chaincode + keydata
+
+    # add checksum
+    xprv += hashlib.sha256(hashlib.sha256(xprv).digest()).digest()[:4]
+    # convert to base58
+    xprv = base58(xprv.hex())
+    return xprv
+
+
 def set_salt():
     # the salt is mnemonic + whatever the passphrase is, no spaces
     salt = 'mnemonic'
@@ -80,11 +113,14 @@ def main():
     words = get_wordlist()
     ph = get_seedphrase(words, indices)
 
-    print('PHRASE:', ph)
+    print('BIP39 PHRASE:', ph)
     sl = set_salt()
     # derive seed from phrase + salt
     sd = hashlib.pbkdf2_hmac('sha512', ph.encode(), sl.encode(), 2048).hex()
-    print('SEED:', sd)
+    print('BIP39 SEED:', sd)
+    print()
+    xprv = get_xprv(sd)
+    print('BIP32 KEY:', xprv)
     print()
 
 
